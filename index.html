@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Line Profiler (A Modal Sandboxes demo)</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/dracula.min.css"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          "IBM Plex Sans",
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        background: #1e1f29;
+        color: #f8f8f2;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 20px;
+        background: #21222c;
+        border-bottom: 1px solid #3d3f4f;
+      }
+
+      .title {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+      }
+
+      h1 {
+        font-size: 18px;
+        font-weight: 700;
+        color: #ff79c6;
+      }
+
+      .subtitle {
+        font-size: 13px;
+        color: #8be9fd;
+      }
+
+      #run-btn {
+        padding: 8px 22px;
+        border: none;
+        border-radius: 6px;
+        background: #bd93f9;
+        color: #1e1f29;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      #run-btn:hover:not(:disabled) {
+        background: #d4b3ff;
+      }
+
+      #run-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      #run-btn #btn-text {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .spinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+        border: 2px solid rgba(30, 31, 41, 0.4);
+        border-top-color: #1e1f29;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .panels {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+      }
+
+      .panel {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-width: 0;
+      }
+
+      .editor-panel {
+        flex: 3;
+        border-right: 1px solid #3d3f4f;
+      }
+
+      .output-panel {
+        flex: 1;
+        background: #1e1f29;
+        min-width: 260px;
+      }
+
+      .panel-header {
+        flex: 0 0 auto;
+        padding: 8px 16px;
+        height: 44px;
+        box-sizing: border-box;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #8be9fd;
+        background: #21222c;
+        border-bottom: 1px solid #3d3f4f;
+        display: flex;
+        align-items: center;
+      }
+
+      .panel-header code {
+        font-size: 12px;
+        color: #bd93f9;
+        background: rgba(189, 147, 249, 0.2);
+        padding: 1px 5px;
+        border-radius: 3px;
+      }
+
+      /* Let CodeMirror fill its panel. */
+      .CodeMirror {
+        flex: 1;
+        height: auto !important;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      /* Profiler gutter; sits between line numbers and code. */
+      .profiler-gutter {
+        width: 100px;
+        min-width: 100px;
+        background: #21222c;
+      }
+
+      .CodeMirror-gutter.profiler-gutter > div {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .profiler-marker {
+        display: block;
+        font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+        font-size: 11px;
+        line-height: 22.4px;
+        text-align: right;
+        padding-right: 8px;
+        cursor: default;
+      }
+
+      .profiler-marker .profiler-hits {
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      /* Heatmap line backgrounds; intensity reflects share of function time. */
+      .heat-1 {
+        background: rgba(100, 180, 255, 0.06) !important;
+      }
+      .heat-2 {
+        background: rgba(255, 220, 100, 0.1) !important;
+      }
+      .heat-3 {
+        background: rgba(255, 160, 80, 0.15) !important;
+      }
+      .heat-4 {
+        background: rgba(255, 80, 80, 0.22) !important;
+      }
+
+      #output {
+        flex: 1;
+        overflow: auto;
+        padding: 16px;
+        font-family:
+          "JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #f8f8f2;
+      }
+
+      #output.placeholder {
+        display: flex;
+        align-items: flex-start;
+        justify-content: flex-start;
+        text-align: left;
+      }
+
+      .placeholder {
+        color: #6d8a88;
+        font-style: normal;
+      }
+
+      /* Override pre-wrap for placeholder so HTML formatting doesn't affect layout. */
+      #output .output-content {
+        white-space: normal;
+      }
+      .error-output {
+        color: #ff5555;
+      }
+
+      .status-bar {
+        padding: 6px 16px;
+        font-size: 12px;
+        background: #21222c;
+        border-top: 1px solid #3d3f4f;
+        color: #8be9fd;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .status-bar kbd {
+        font-family: inherit;
+        font-size: 11px;
+        background: rgba(255, 255, 255, 0.1);
+        padding: 1px 6px;
+        border-radius: 3px;
+        border: 1px solid #3d3f4f;
+      }
+
+      @media (max-width: 800px) {
+        .panels {
+          flex-direction: column;
+        }
+        .editor-panel {
+          border-right: none;
+          border-bottom: 1px solid #3d3f4f;
+        }
+        .output-panel {
+          min-width: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="title">
+        <h1>Line Profiler</h1>
+        <span class="subtitle"
+          >A Modal Sandboxes demo (10 second execution limit)</span
+        >
+      </div>
+      <button id="run-btn" onclick="runProfiler()">
+        <span id="btn-text">&#9654; Run Profiler</span>
+      </button>
+    </header>
+
+    <div class="panels">
+      <div class="panel editor-panel">
+        <div class="panel-header">
+          Editor: Decorate functions with&nbsp;<code>@profile</code>
+        </div>
+        <textarea id="code-editor"></textarea>
+      </div>
+      <div class="panel output-panel">
+        <div class="panel-header">Script Output</div>
+        <div id="output" class="placeholder">
+          <span class="output-content"
+            >Hit ▶ Run Profiler to execute your code with <i>line_profiler</i>.
+            Per-line profiling stats will appear inline in the editor; script
+            `stdout` and errors will appear here.</span
+          >
+        </div>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <span id="status">Ready</span>
+      <span><kbd>Ctrl</kbd> + <kbd>Enter</kbd> to run</span>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
+    <script>
+      const EXAMPLE_CODE = `@profile
+def fibonacci(n):
+    """Compute the nth Fibonacci number iteratively."""
+    if n <= 1:
+        return n
+    a, b = 0, 1
+    for _ in range(2, n + 1):
+        a, b = b, a + b
+    return b
+
+
+@profile
+def is_prime(n):
+    """Check whether n is prime via trial division."""
+    if n < 2:
+        return False
+    for i in range(2, int(n ** 0.5) + 1):
+        if n % i == 0:
+            return False
+    return True
+
+
+def main():
+    fibs = [fibonacci(i) for i in range(30)]
+    prime_fibs = [f for f in fibs if is_prime(f)]
+    print(f"Prime Fibonacci numbers (first 30): {prime_fibs}")
+
+
+if __name__ == "__main__":
+    main()
+`;
+
+      const HEAT_CLASSES = ["heat-1", "heat-2", "heat-3", "heat-4"];
+
+      const editor = CodeMirror.fromTextArea(
+        document.getElementById("code-editor"),
+        {
+          mode: "python",
+          theme: "dracula",
+          lineNumbers: true,
+          indentUnit: 4,
+          tabSize: 4,
+          indentWithTabs: false,
+          lineWrapping: false,
+          matchBrackets: true,
+          gutters: ["CodeMirror-linenumbers"],
+          extraKeys: {
+            "Ctrl-Enter": runProfiler,
+            "Cmd-Enter": runProfiler,
+          },
+        },
+      );
+      editor.setValue(EXAMPLE_CODE);
+
+      const outputEl = document.getElementById("output");
+      const statusEl = document.getElementById("status");
+      const runBtn = document.getElementById("run-btn");
+      const btnText = document.getElementById("btn-text");
+
+      let hasAnnotations = false;
+
+      function hideProfilerGutter() {
+        editor.setOption("gutters", ["CodeMirror-linenumbers"]);
+      }
+
+      function showProfilerGutter() {
+        editor.setOption("gutters", [
+          "CodeMirror-linenumbers",
+          "profiler-gutter",
+        ]);
+      }
+
+      // Editing invalidates stale profiling annotations.
+      editor.on("change", () => {
+        if (hasAnnotations) {
+          clearAnnotations();
+          hideProfilerGutter();
+          statusEl.textContent = "Ready";
+        }
+      });
+
+      // Profiler Output Parser:
+
+      /**
+       * Parse the raw `kernprof` `stdout` into structured per-line metrics and any script output
+       * that preceded the profiler tables.
+       */
+      function parseProfilerOutput(text) {
+        const result = {
+          scriptOutput: "",
+          lineData: {},
+          functions: [],
+          timerUnit: "µs",
+        };
+
+        // Everything before the first "Wrote profile results" line is the script's own `stdout`
+        // (print calls, etc.).
+        const marker = "Wrote profile results to ";
+        const markerIdx = text.indexOf(marker);
+        if (markerIdx >= 0) {
+          result.scriptOutput = text.substring(0, markerIdx).trimEnd();
+        } else {
+          result.scriptOutput = text;
+          return result;
+        }
+
+        const lines = text.substring(markerIdx).split("\n");
+        let inTable = false;
+        let currentFunc = null;
+
+        for (const line of lines) {
+          // Detect the timer unit so we can label tooltip values correctly.
+          const timerMatch = line.match(/^Timer unit:\s+([\d.e+-]+)\s+s/);
+          if (timerMatch) {
+            const unit = parseFloat(timerMatch[1]);
+            if (unit <= 1e-8) result.timerUnit = "ns";
+            else if (unit <= 1e-5) result.timerUnit = "µs";
+            else if (unit <= 1e-2) result.timerUnit = "ms";
+            else result.timerUnit = "s";
+            continue;
+          }
+
+          const funcMatch = line.match(
+            /^Function:\s+(\w+)\s+at\s+line\s+(\d+)/,
+          );
+          if (funcMatch) {
+            currentFunc = funcMatch[1];
+            result.functions.push(currentFunc);
+            continue;
+          }
+
+          // The separator row marks the start of the data table.
+          if (/^=+$/.test(line.trim())) {
+            inTable = true;
+            continue;
+          }
+
+          if (!inTable) continue;
+
+          // An empty line terminates the current function's table.
+          if (!line.trim()) {
+            inTable = false;
+            continue;
+          }
+
+          // Match a data row that has profiling metrics. Lines that were never executed (e.g.
+          // decorators, `def` signatures) have no numeric columns and are intentionally skipped.
+          const m = line.match(
+            /^\s*(\d+)\s+(\d+)\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.]+)/,
+          );
+          if (m) {
+            result.lineData[parseInt(m[1])] = {
+              hits: parseInt(m[2]),
+              time: parseFloat(m[3]),
+              perHit: parseFloat(m[4]),
+              pctTime: parseFloat(m[5]),
+              func: currentFunc,
+            };
+          }
+        }
+
+        return result;
+      }
+
+      // Editor Annotation:
+
+      function heatClass(pct) {
+        if (pct >= 50) return "heat-4";
+        if (pct >= 25) return "heat-3";
+        if (pct >= 10) return "heat-2";
+        if (pct > 0) return "heat-1";
+        return null;
+      }
+
+      function heatColor(pct) {
+        if (pct >= 50) return "#ff6b6b";
+        if (pct >= 25) return "#ffa06b";
+        if (pct >= 10) return "#ffd06b";
+        if (pct > 0) return "#8cb4e0";
+        return "#666";
+      }
+
+      function formatHits(n) {
+        const fmt = (v) => {
+          const r =
+            v >= 100
+              ? Math.round(v)
+              : v >= 10
+                ? Math.round(v * 10) / 10
+                : v >= 1
+                  ? Math.round(v * 100) / 100
+                  : Math.round(v * 1000) / 1000;
+          return String(Math.min(999, r)).replace(/\.0+$/, "");
+        };
+        if (n >= 1e12) return fmt(n / 1e12) + "T";
+        if (n >= 1e9) return fmt(n / 1e9) + "B";
+        if (n >= 1e6) return fmt(n / 1e6) + "M";
+        if (n >= 1e3) return fmt(n / 1e3) + "K";
+        return fmt(n);
+      }
+
+      /**
+       * Overlay profiling stats onto the editor as gutter markers and heatmap line backgrounds.
+       */
+      function annotateEditor(parsed) {
+        clearAnnotations();
+        showProfilerGutter();
+
+        for (const [numStr, d] of Object.entries(parsed.lineData)) {
+          const idx = parseInt(numStr) - 1;
+          if (idx < 0 || idx >= editor.lineCount()) continue;
+
+          // Gutter marker showing % of function time and hit count.
+          const el = document.createElement("div");
+          el.className = "profiler-marker";
+          const pctSpan = document.createElement("span");
+          pctSpan.textContent = d.pctTime.toFixed(1) + "% ";
+          pctSpan.style.color = heatColor(d.pctTime);
+          const hitsSpan = document.createElement("span");
+          hitsSpan.className = "profiler-hits";
+          hitsSpan.textContent = "(" + formatHits(d.hits) + ")";
+          el.appendChild(pctSpan);
+          el.appendChild(hitsSpan);
+          el.title =
+            `${formatHits(d.hits)} hits · ` +
+            `${d.time} ${parsed.timerUnit} total · ` +
+            `${d.perHit} ${parsed.timerUnit}/hit · ` +
+            `${d.pctTime.toFixed(1)}% of ${d.func}()`;
+          editor.setGutterMarker(idx, "profiler-gutter", el);
+
+          // Background tint proportional to hotness.
+          const cls = heatClass(d.pctTime);
+          if (cls) editor.addLineClass(idx, "background", cls);
+        }
+
+        hasAnnotations = true;
+      }
+
+      function clearAnnotations() {
+        editor.clearGutter("profiler-gutter");
+        for (let i = 0; i < editor.lineCount(); i++) {
+          for (const cls of HEAT_CLASSES) {
+            editor.removeLineClass(i, "background", cls);
+          }
+        }
+        hasAnnotations = false;
+        hideProfilerGutter();
+      }
+
+      // Run Profiler:
+
+      async function runProfiler() {
+        const code = editor.getValue().trim();
+        if (!code) return;
+
+        runBtn.disabled = true;
+        btnText.innerHTML = '<span class="spinner"></span> Profiling\u2026';
+        clearAnnotations();
+        outputEl.textContent = "";
+        outputEl.className = "";
+        statusEl.textContent = "Executing in Modal sandbox\u2026";
+
+        try {
+          const res = await fetch("/api/profile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code }),
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            outputEl.className = "error-output";
+            outputEl.textContent = data.error || "Unknown server error.";
+            statusEl.textContent = `Error (HTTP ${res.status})`;
+            return;
+          }
+
+          // Parse profiler tables out of `stdout` and overlay them on the editor.
+          const parsed = parseProfilerOutput(data.stdout || "");
+          const lineCount = Object.keys(parsed.lineData).length;
+
+          if (lineCount > 0) {
+            annotateEditor(parsed);
+          }
+
+          // The right panel shows only the script's own print output and any `stderr`; profiler
+          // tables are now rendered inline.
+          let rightText = parsed.scriptOutput || "";
+          if (data.stderr) {
+            rightText +=
+              (rightText ? "\n\n" : "") +
+              "\u2500\u2500 stderr \u2500\u2500\n" +
+              data.stderr;
+          }
+
+          if (rightText.trim()) {
+            outputEl.className = data.exit_code !== 0 ? "error-output" : "";
+            outputEl.textContent = rightText;
+          } else if (lineCount > 0) {
+            outputEl.className = "placeholder";
+            outputEl.textContent = "No print output from script.";
+          } else {
+            outputEl.className = "placeholder";
+            outputEl.textContent =
+              "No profiling data. Did you add @profile decorators?";
+          }
+
+          const funcList = parsed.functions.join(", ");
+          statusEl.textContent =
+            data.exit_code === 0
+              ? lineCount > 0
+                ? `Profiled ${parsed.functions.length} function(s): ${funcList}`
+                : "Finished; no profiling data"
+              : `Exited with code ${data.exit_code}`;
+        } catch (err) {
+          outputEl.className = "error-output";
+          outputEl.textContent = `Network error: ${err.message}`;
+          statusEl.textContent = "Connection failed";
+        } finally {
+          runBtn.disabled = false;
+          btnText.innerHTML = "&#9654; Run Profiler";
+        }
+      }
+    </script>
+  </body>
+</html>

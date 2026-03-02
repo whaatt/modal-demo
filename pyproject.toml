@@ -1,0 +1,11 @@
+[project]
+name = "modal-line-profiler"
+version = "0.1.0"
+description = "Browser-based Python line profiler powered by Modal sandboxes"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "modal",
+    "python-dotenv",
+]
